@@ -1,0 +1,14 @@
+.venv
+node_modules
+.git
+.github
+.wwebjs_auth
+.wwebjs_cache
+data
+*.log
+.DS_Store
+__pycache__
+**/__pycache__
+*.pyc
+.env
+recipients.json

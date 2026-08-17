@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.DS_Store
+
+# Node
+node_modules/
+package-lock.json
+
+# WhatsApp session (contiene credenciales, NO commitear)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Datos y config local (pueden tener números privados)
+config/recipients.json
+data/
+

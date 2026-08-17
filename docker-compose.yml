@@ -1,0 +1,22 @@
+services:
+  biblia:
+    build: .
+    container_name: biblia-whatsapp
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # JSONs diarios generados por el scraper (persistentes).
+      - ./data:/app/data
+      # Sesión de WhatsApp (LocalAuth): claves para no re-escanear QR.
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      # Caché de Puppeteer/Chromium.
+      - ./.wwebjs_cache:/app/.wwebjs_cache
+      # Destinatarios: montamos el DIRECTORIO (no el archivo) para que editar
+      # config/recipients.json en el host se vea reflejado sin reiniciar
+      # (los mounts de archivo único congelan el inode al reemplazarlo).
+      - ./config:/app/config:ro
+    # node-cron usa TZ del entorno para saber la hora local.
+    environment:
+      TZ: America/Santiago
+      RECIPIENTS_FILE: /app/config/recipients.json
