@@ -52,6 +52,58 @@ function extraerCita(ref) {
   return m ? m[1].trim() : ref.trim();
 }
 
+const EVANGELISTAS = {
+  Mt: "Mateo",
+  Mc: "Marcos",
+  Lc: "Lucas",
+  Jn: "Juan",
+};
+
+// Parsea "Mt 18,15-20" / "1Cor 13, 1-3" -> { num, abbr, capitulo, versiculos }
+function parsearCita(cita) {
+  const m = cita.match(
+    /^(\d{1,3})?\s*([A-Za-zÁÉÍÓÚáéíóúÑñ]{1,5})\s+(\d+)(?:\s*[,;.]\s*(.+))?$/
+  );
+  if (!m) return null;
+  return { num: m[1] || "", abbr: m[2], capitulo: m[3], versiculos: (m[4] || "").trim() };
+}
+
+// Versión para el encabezado del mensaje WhatsApp:
+//   "Mt 18,15-20"   -> "Evangelio según san Mateo 18, 15-20"
+//   "Hch 3, 1-5"    -> "Hechos de los Apóstoles 3, 1-5"
+function tituloCitaWhatsApp(cita) {
+  const p = parsearCita(cita);
+  if (!p) return cita;
+  if (!p.num && EVANGELISTAS[p.abbr]) {
+    const ref = p.versiculos ? `${p.capitulo}, ${p.versiculos}` : `${p.capitulo}`;
+    return `Evangelio según san ${EVANGELISTAS[p.abbr]} ${ref}`.replace(/\s+/g, " ").trim();
+  }
+  return expandirCita(cita);
+}
+
+// Versión hablada para el TTS:
+//   "Mt 18,15-20" -> "Evangelio según san Mateo, capítulo 18, versículos 15 al 20"
+//   "Mc 1, 1-5"   -> "Evangelio según san Marcos, capítulo 1, versículos 1 al 5"
+function citaHablada(cita) {
+  const p = parsearCita(cita);
+  if (!p) return expandirAbreviaturasLiturgicas(expandirCita(cita));
+  let nombre;
+  if (!p.num && EVANGELISTAS[p.abbr]) {
+    nombre = `Evangelio según san ${EVANGELISTAS[p.abbr]}`;
+  } else {
+    nombre = expandirCita(`${p.num}${p.abbr}`.trim());
+  }
+  let out = `${nombre}, capítulo ${p.capitulo}`;
+  if (p.versiculos) {
+    const vers = p.versiculos
+      .replace(/(\d+)\s*[-–—]\s*(\d+)/g, "$1 al $2") // 15-20 / 15—20 -> 15 al 20
+      .replace(/\s*[;.]\s*/g, ", ")              // 1-5. 10 -> 1 al 5, 10
+      .replace(/,\s([^,]+)$/, " y $1");          // último separador -> "y"
+    out += `, versículos ${vers}`;
+  }
+  return out;
+}
+
 // "Liturgia del Miércoles 12 de Agosto de 2026" -> "Miércoles 12 de Agosto de 2026"
 function extraerFechaHumana(titulo) {
   if (!titulo) return "";
@@ -72,7 +124,7 @@ function construirPartes(data) {
   if (fechaHumana) partes.push({ t: "i", s: fechaHumana });
 
   const cita = extraerCita(en.evangelio_ref);
-  if (cita) partes.push({ t: "h2", s: cita });
+  if (cita) partes.push({ t: "cita", s: cita });
 
   if (en.evangelio_texto) partes.push({ t: "p", s: en.evangelio_texto.trim() });
 
@@ -103,7 +155,12 @@ function formatear(data) {
     ].join(SEP);
   }
   return partes
-    .map((p) => (p.t === "h2" ? B(p.s) : p.t === "i" ? I(p.s) : p.s))
+    .map((p) =>
+      p.t === "cita" ? B(tituloCitaWhatsApp(p.s))
+      : p.t === "h2" ? B(p.s)
+      : p.t === "i" ? I(p.s)
+      : p.s
+    )
     .join(SEP);
 }
 
@@ -119,8 +176,8 @@ function formatearTextoPlano(data) {
     let s = p.s;
     if (p.t === "i" && /Fuente:/.test(s)) return null; // omitir crédito en audio
     if (p.t === "i") s = `${s}.`;
-    // Si es la cita bíblica (h2 justo después de la fecha), la expandimos.
-    if (p.t === "h2" && esCitaBiblica(s)) s = expandirCita(s);
+    // La cita bíblica se dice completa: "Evangelio según san Mateo, capítulo…"
+    if (p.t === "cita") return citaHablada(s);
     return expandirAbreviaturasLiturgicas(s);
   }).filter(Boolean);
   return render.join(SEP);
@@ -227,4 +284,6 @@ export {
   expandirCita,
   esCitaBiblica,
   expandirAbreviaturasLiturgicas,
+  tituloCitaWhatsApp,
+  citaHablada,
 };
