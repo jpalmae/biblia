@@ -156,6 +156,9 @@ function buildClient() {
     puppeteer: {
       headless: true,
       executablePath,
+      // Timeout del protocolo CDP: por defecto es bajo y falla si la pagina
+      // de WhatsApp Web se queda lenta (provoca ProtocolError no capturado).
+      protocolTimeout: 120_000,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -173,9 +176,13 @@ function buildClient() {
   client.on("authenticated", () => log("Sesión autenticada."));
   client.on("auth_failure", (m) => log("ERROR de autenticación:", m));
   client.on("ready", () => log("Cliente WhatsApp listo."));
-  client.on("disconnected", (reason) =>
-    log("Cliente desconectado:", reason, "(se re-conectará solo)")
-  );
+  client.on("disconnected", (reason) => {
+    // whatsapp-web.js no re-conecta solo de forma confiable: salimos limpio
+    // para que Docker reinicie el contenedor (entrypoint limpia locks y la
+    // sesion persistida re-autentica sin escanear QR de nuevo).
+    log("Cliente desconectado:", reason, "- reiniciando contenedor…");
+    process.exit(1);
+  });
 
   return client;
 }
@@ -187,6 +194,45 @@ async function main() {
   const voiceOnly = argv.has("--voice-only");
 
   const client = buildClient();
+
+  // Cualquier rechazo no manejado (p.ej. ProtocolError de Puppeteer cuando
+  // WhatsApp Web se cuelga) debe tumbar el proceso de forma controlada:
+  // Docker lo reinicia, el entrypoint limpia locks y la sesion re-autentica.
+  process.on("unhandledRejection", (reason) => {
+    log("unhandledRejection:", reason, "- saliendo para que Docker reinicie…");
+    process.exit(1);
+  });
+
+  // Watchdogs anti-zombie (falla real del 11-sep: 'authenticated' y nunca
+  // 'ready' -> cron nunca agendado -> daemon vivo pero muerto por dias).
+  // Etapa 1: Chromium colgado al boot (sin eventos en 10 min) -> reiniciar.
+  // QR escaneandose = esperando humano -> no aplicar timeout.
+  // Etapa 2: autenticado pero no 'ready' en 4 min -> sesion colgada -> reiniciar.
+  // Salir con exit(1) es seguro: Docker reinicia, el entrypoint limpia locks
+  // y la sesion persistida re-autentica sin escanear QR otra vez.
+  const READY_TIMEOUT_MIN = Number(process.env.READY_TIMEOUT_MIN || 4);
+  const bootWatchdog = setTimeout(() => {
+    if (!clientReady) {
+      log("Sin progreso en 10 min (Chromium colgado?) - reiniciando contenedor…");
+      process.exit(1);
+    }
+  }, 10 * 60_000);
+  bootWatchdog.unref?.();
+
+  client.on("qr", () => clearTimeout(bootWatchdog));
+  client.on("authenticated", () => {
+    clearTimeout(bootWatchdog);
+    const t = setTimeout(() => {
+      if (!clientReady) {
+        log(
+          `Autenticado pero no 'ready' en ${READY_TIMEOUT_MIN} min ` +
+          "(sesion colgada) - reiniciando contenedor…"
+        );
+        process.exit(1);
+      }
+    }, READY_TIMEOUT_MIN * 60_000);
+    t.unref?.();
+  });
 
   // Registrar el handler de SIGUSR2 INMEDIATAMENTE, antes de initialize().
   // Si la señal llega mientras el cliente aún conecta y no hay handler,
