@@ -2,7 +2,10 @@ services:
   biblia:
     build: .
     container_name: biblia-whatsapp
-    restart: unless-stopped
+    # "always" (y no "unless-stopped"): si el daemon de Docker se reinicia
+    # o el contenedor muere con exit raro (paso el 21-sep: exit 255 sin
+    # reinicio), el contenedor vuelve a levantarse si o si.
+    restart: always
     env_file:
       - .env
     volumes:
