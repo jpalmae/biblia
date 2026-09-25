@@ -57,20 +57,23 @@ function runScraper() {
   });
 }
 
-// Sintetiza `text` a MP3 llamando a scraper.tts (edge-tts).
+// Sintetiza `text` a audio llamando a scraper.tts (edge-tts + ffmpeg a OGG).
+// El script imprime la ruta final (puede ser .ogg o .mp3) por stdout.
 function generateTTS(text, outPath) {
   return new Promise((resolve, reject) => {
     log(`Generando audio (${text.length} chars) -> ${outPath}`);
     const p = spawn(
       "python3",
       ["-m", "scraper.tts", "--out", outPath, "--voice", TTS_VOICE],
-      { stdio: ["pipe", "inherit", "inherit"] }
+      { stdio: ["pipe", "pipe", "inherit"] }
     );
+    let stdout = "";
+    p.stdout.on("data", (d) => (stdout += d));
     p.stdin.write(text);
     p.stdin.end();
     p.on("close", (code) =>
       code === 0
-        ? resolve(outPath)
+        ? resolve(stdout.trim().split("\n").pop() || outPath)
         : reject(new Error(`tts terminó con código ${code}`))
     );
     p.on("error", reject);
@@ -89,21 +92,20 @@ function latestJsonPath(fecha = null) {
   return `${DATA_DIR}/${f}.json`;
 }
 
-function latestMp3Path(fecha = null) {
-  const f = fecha || hoyISO();
-  return `${DATA_DIR}/${f}.mp3`;
-}
-
 // Envía un mensaje de texto y (opcionalmente) un audio como voice note.
 async function sendToAll(client, { text, mediaPath }) {
   const recipients = loadRecipients();
   log(`Enviando a ${recipients.length} destinatario(s).`);
   let ok = 0;
   let fail = 0;
-  const media =
-    mediaPath && existsSync(mediaPath)
-      ? MessageMedia.fromFilePath(mediaPath, "audio/mpeg")
-      : null;
+  let media = null;
+  if (mediaPath && existsSync(mediaPath)) {
+    // WhatsApp exige Opus/OGG para voice notes confiables; mimetype segun ext.
+    const mime = mediaPath.endsWith(".ogg")
+      ? "audio/ogg; codecs=opus"
+      : "audio/mpeg";
+    media = MessageMedia.fromFilePath(mediaPath, mime);
+  }
   for (const id of recipients) {
     try {
       if (text) await client.sendMessage(id, text);
@@ -118,6 +120,13 @@ async function sendToAll(client, { text, mediaPath }) {
     }
   }
   log(`Envío completo: ${ok} OK, ${fail} fallidos.`);
+  // Si TODO falló (p.ej. WhatsApp Web actualizo su bundle y rompio los
+  // patches de la libreria: "getter must include an id property"),
+  // reiniciamos el contenedor: sesion fresca + reintentos via --run-on-start.
+  if (ok === 0 && fail > 0) {
+    log("Envio totalmente fallido - reiniciando contenedor para reintentar…");
+    process.exit(1);
+  }
 }
 
 async function runOnce(client, { sendOnly = false, voiceOnly = false } = {}) {
@@ -133,9 +142,9 @@ async function runOnce(client, { sendOnly = false, voiceOnly = false } = {}) {
   const textoPlano = formatearTextoPlano(data);
   let mp3Path = null;
   if (textoPlano && textoPlano.length > 50) {
-    mp3Path = latestMp3Path();
+    const outPath = `${DATA_DIR}/${data.fecha}.mp3`;
     try {
-      await generateTTS(textoPlano, mp3Path);
+      mp3Path = await generateTTS(textoPlano, outPath);
     } catch (e) {
       log("TTS falló (continúo solo con texto):", e.message);
       mp3Path = null;

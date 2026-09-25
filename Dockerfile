@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxkbcommon0 \
         libpangocairo-1.0-0 \
         libxshmfence1 \
+        ffmpeg \
         wget \
         tini \
     && rm -rf /var/lib/apt/lists/*
@@ -47,9 +48,12 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip3 install --break-system-packages -r requirements.txt
 
-# Instalar dependencias Node.
+# Instalar dependencias Node y parchear whatsapp-web.js (PR #201925: fix
+# del crash "getter must include an id property" en envio de medios, aun
+# no liberado en npm). El parche es idempotente y valida sus anclajes.
 COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+COPY patches ./patches
+RUN npm install --omit=dev && npm cache clean --force && node patches/wwebjs-201925.js
 
 # Copiar el resto del código.
 COPY scraper ./scraper

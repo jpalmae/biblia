@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,7 +57,21 @@ def main() -> int:
         await communicate.save(args.out)
 
     asyncio.run(run())
-    print(args.out)
+
+    # WhatsApp requiere Opus/OGG para que las notas de voz se reproduzcan
+    # de forma confiable; el MP3 como voice note suele no entregarse.
+    ogg = str(Path(args.out).with_suffix(".ogg"))
+    conv = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", args.out,
+         "-ar", "48000", "-ac", "1", "-c:a", "libopus", ogg],
+        capture_output=True, text=True,
+    )
+    if conv.returncode == 0 and Path(ogg).exists():
+        Path(args.out).unlink(missing_ok=True)  # el mp3 ya no hace falta
+        print(ogg)
+    else:
+        print(f"aviso: ffmpeg fallo, se usa mp3: {conv.stderr}", file=sys.stderr)
+        print(args.out)
     return 0
 
 

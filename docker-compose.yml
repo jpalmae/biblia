@@ -19,6 +19,10 @@ services:
       # config/recipients.json en el host se vea reflejado sin reiniciar
       # (los mounts de archivo único congelan el inode al reemplazarlo).
       - ./config:/app/config:ro
+    # --run-on-start: tras cualquier reinicio (crash, watchdog, exit por envio
+    # fallido) reintenta el envio apenas la sesion queda lista. Los restarts
+    # del host-watchdog son no-ops si el contenedor ya corre (sin duplicados).
+    command: ["node", "src/index.js", "--run-on-start"]
     # node-cron usa TZ del entorno para saber la hora local.
     environment:
       TZ: America/Santiago
