@@ -1,7 +1,7 @@
 # Daemon: Node.js (whatsapp-web.js + cron) + Python 3 (scraper).
 # Imagen base: Node 20 sobre Debian Bookworm slim. Le añadimos Python 3
 # y las dependencias de sistema que Puppeteer/Chromium necesita.
-FROM node:20-bookworm-slim
+FROM node:25-bookworm-slim
 
 # Timezone por defecto (puede sobreescribirse en docker-compose / .env).
 ENV TZ=America/Santiago \
