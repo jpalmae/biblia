@@ -1,14 +1,38 @@
 version: 2
+
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
+  # pip deps
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "daily"
-  - package-ecosystem: "npm"
-    directory: "/"
+      interval: daily
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - patch
+          - minor
+
+  # npm deps
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "daily"
-  - package-ecosystem: "docker"
-    directory: "/"
+      interval: daily
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - patch
+          - minor
+
+  # docker deps
+  - package-ecosystem: docker
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - patch
+          - minor
