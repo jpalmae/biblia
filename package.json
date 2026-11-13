@@ -16,6 +16,6 @@
     "whatsapp-web.js": "^1.23.0"
   },
   "optionalDependencies": {
-    "node-cron": "^3.0.3"
+    "node-cron": "^4.6.0"
   }
 }
